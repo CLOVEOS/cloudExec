@@ -1,0 +1,42 @@
+# ========================
+# 1. Environment & Secrets
+# ========================
+.env
+.env.*
+!.env.example
+
+# ========================
+# 2. Python & Spark (venv)
+# ========================
+# Ignore the virtual environment folder!
+venv/
+env/
+# Ignore Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# Ignore PySpark logs/outputs
+derby.log
+metastore_db/
+/tmp/
+
+# ========================
+# 3. Node.js (client & server)
+# ========================
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# React build outputs (adjust if you use Next.js or Vite)
+client/build/
+client/dist/
+
+# ========================
+# 4. OS & Editor Files
+# ========================
+.DS_Store
+Thumbs.db
+.vscode/
+*.log
