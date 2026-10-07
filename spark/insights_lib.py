@@ -10,6 +10,8 @@ Outputs (gold tables):
                      proficiency, weak areas, 7-day trend, streaks, recommendations
     platform_daily – one row per day: volume, DAU, error rate, latency percentiles
 """
+from __future__ import annotations  # PEP 604 hints on Python 3.8 (apache/spark image)
+
 from datetime import datetime, timedelta, timezone
 
 from pyspark.sql import DataFrame, Window
