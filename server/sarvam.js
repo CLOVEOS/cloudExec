@@ -64,7 +64,9 @@ function parseJsonReply(content) {
  * Chat completion that must return a JSON object.
  * @returns {Promise<{data: object, usage: object, model: string}>}
  */
-async function chatJson({ system, user, maxTokens = 2048, temperature = 0.2 }, fetchImpl) {
+// sarvam-105b is a reasoning model: its thinking tokens count against max_tokens,
+// so the budget must leave room for the final JSON answer after the reasoning.
+async function chatJson({ system, user, maxTokens = config.sarvam.maxTokens, temperature = 0.2 }, fetchImpl) {
   const body = {
     model: config.sarvam.chatModel,
     messages: [
@@ -76,8 +78,18 @@ async function chatJson({ system, user, maxTokens = 2048, temperature = 0.2 }, f
     response_format: { type: "json_object" },
   };
   const res = await post("/v1/chat/completions", body, fetchImpl);
-  const content = res.choices?.[0]?.message?.content;
-  return { data: parseJsonReply(content), usage: res.usage || {}, model: res.model || body.model };
+  const choice = res.choices?.[0] || {};
+  const msg = choice.message || {};
+  let data;
+  try {
+    // Some replies leave `content` empty and put everything in reasoning_content.
+    data = parseJsonReply(msg.content || msg.reasoning_content);
+  } catch (e) {
+    throw new Error(
+      `${e.message} (finish_reason=${choice.finish_reason}, completion_tokens=${res.usage?.completion_tokens ?? "?"})`
+    );
+  }
+  return { data, usage: res.usage || {}, model: res.model || body.model };
 }
 
 /** Translate text, chunking on paragraph boundaries to respect the 2000-char limit. */

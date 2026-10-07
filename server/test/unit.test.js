@@ -97,3 +97,16 @@ test("sarvam: surfaces HTTP errors", async () => {
   const fakeFetch = async () => ({ ok: false, status: 429, text: async () => "rate limited" });
   await assert.rejects(sarvam.chatJson({ system: "s", user: "u" }, fakeFetch), /429/);
 });
+
+test("sarvam: falls back to reasoning_content and reports truncation", async () => {
+  const reply = (message, finish_reason = "stop") => async () => ({
+    ok: true,
+    text: async () => JSON.stringify({ choices: [{ message, finish_reason }], usage: { completion_tokens: 2048 } }),
+  });
+  const out = await sarvam.chatJson({ system: "s", user: "u" }, reply({ content: null, reasoning_content: '{"ok":true}' }));
+  assert.deepEqual(out.data, { ok: true });
+  await assert.rejects(
+    sarvam.chatJson({ system: "s", user: "u" }, reply({ content: null, reasoning_content: "thinking..." }, "length")),
+    /finish_reason=length/
+  );
+});
