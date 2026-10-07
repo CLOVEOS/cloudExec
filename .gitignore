@@ -44,3 +44,5 @@ Thumbs.db
 data/
 spark-warehouse/
 .pytest_cache/
+
+backups/

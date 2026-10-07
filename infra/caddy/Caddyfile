@@ -1,0 +1,20 @@
+# Automatic HTTPS (Let's Encrypt) for $DOMAIN, proxied to the web container,
+# which serves the SPA and forwards /api to the API service.
+{
+	email {$ACME_EMAIL}
+}
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:80 {
+		transport http {
+			read_timeout 180s
+		}
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+}

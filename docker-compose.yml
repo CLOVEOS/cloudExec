@@ -12,7 +12,7 @@ x-app-env: &app-env
   USE_KAFKA: "true"
   KAFKA_BROKERS: kafka:29092
   KAFKA_PARTITIONS: "6"
-  JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+  JWT_SECRET: ${JWT_SECRET:-local-dev-secret-not-for-production}
   ADMIN_EMAILS: ${ADMIN_EMAILS:-}
   SARVAM_API_KEY: ${SARVAM_API_KEY:-}
   SARVAM_CHAT_MODEL: ${SARVAM_CHAT_MODEL:-sarvam-105b}
