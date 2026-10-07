@@ -45,6 +45,8 @@ const config = {
     translateModel: process.env.SARVAM_TRANSLATE_MODEL || "sarvam-translate:v1",
     timeoutMs: int(process.env.SARVAM_TIMEOUT_MS, 120000),
     maxTokens: int(process.env.SARVAM_MAX_TOKENS, 8192),
+    // low | medium | high | none (disable) | default (don't send the field)
+    reasoningEffort: process.env.SARVAM_REASONING_EFFORT || "low",
   },
 
   rateLimit: {
