@@ -11,6 +11,7 @@ const metrics = require("./metrics");
 const { SUPPORTED, LANGUAGES } = require("./languages");
 const { createJob, processJob, publicJob } = require("./jobs");
 const { getUserDashboard, getPlatformAnalytics } = require("./analytics");
+const adminUsers = require("./adminUsers");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -106,6 +107,25 @@ api.use("/ai", perUser(config.rateLimit.aiPerMinute), aiRoute);
 
 api.get("/admin/analytics", auth.requireAdmin, async (req, res) => {
   res.json(await getPlatformAnalytics());
+});
+
+// User directory (search / sort / paginate) and CSV export.
+api.get("/admin/users", auth.requireAdmin, async (req, res) => {
+  res.json(await adminUsers.listUsers(req.query));
+});
+
+api.get("/admin/users.csv", auth.requireAdmin, async (req, res) => {
+  res.set("Content-Type", "text/csv; charset=utf-8");
+  res.set("Content-Disposition", `attachment; filename="cloudexec-users-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(await adminUsers.exportCsv(req.query));
+});
+
+// Any user's full dashboard, as the admin sees it.
+api.get("/admin/users/:id/dashboard", auth.requireAdmin, async (req, res) => {
+  const user = await adminUsers.getUser(req.params.id);
+  if (!user) return res.status(404).json({ error: "User not found" });
+  const days = Math.min(Math.max(parseInt(req.query.days || "120", 10) || 120, 7), 365);
+  res.json({ user: auth.publicUser(user), dashboard: await getUserDashboard(String(user._id), { days }) });
 });
 
 app.use("/api", api);

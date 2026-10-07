@@ -122,6 +122,8 @@ After this, every merge to `main` that passes CI deploys itself.
 | Restart one service | `docker compose -f docker-compose.prod.yml restart api` |
 | Scale workers | set `WORKER_REPLICAS=4` in `.env`, then `./deploy/deploy.sh` |
 | Recompute insights now | `docker compose -f docker-compose.prod.yml run --rm spark-batch "spark-submit --master local[2] batch_insights.py --source lake --path /data/lake/executions --mongo-uri mongodb://mongodb:27017"` |
+| Seed 1,000 demo students (heavy/medium/low activity, ≥51 solved each) | `docker compose -f docker-compose.prod.yml exec api node scripts/seed.js --users 1000 --tiers --days 60 --kafka`, then run "Recompute insights now" |
+| Browse every user | **Users** tab (admins): search, filter by tier/level, sort, CSV export, click a row for that user's dashboard |
 | Backup MongoDB | `./deploy/backup.sh` (keeps the last 7 in `backups/`) |
 | Nightly backups | `crontab -e` → `0 3 * * * cd ~/cloudExec && ./deploy/backup.sh >> backups/backup.log 2>&1` |
 | Update | `./deploy/deploy.sh` (or merge to `main` once CD is set up) |
