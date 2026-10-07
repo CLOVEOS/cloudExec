@@ -130,7 +130,8 @@ services:
     command:
       - |
         while true; do
-          spark-submit --master local[2] batch_insights.py --source lake \
+          spark-submit --master local[2] --packages org.mongodb.spark:mongo-spark-connector_2.12:10.4.0 \
+            batch_insights.py --source lake --fallback-mongo \
             --path /data/lake/executions --mongo-uri mongodb://mongodb:27017 \
             || echo "batch run failed (lake may still be empty)";
           sleep $${INSIGHTS_INTERVAL_SECONDS:-3600};
@@ -139,6 +140,7 @@ services:
       INSIGHTS_INTERVAL_SECONDS: "3600"
     volumes:
       - lake_data:/data
+      - ivy_cache:/opt/cloudexec/.ivy2
     depends_on: [spark-streaming]
     restart: unless-stopped
 
