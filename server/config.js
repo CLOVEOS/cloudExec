@@ -36,6 +36,8 @@ const config = {
     maxCodeBytes: int(process.env.MAX_CODE_BYTES, 64 * 1024),
     maxInputBytes: int(process.env.MAX_INPUT_BYTES, 64 * 1024),
     maxOutputBytes: int(process.env.MAX_OUTPUT_BYTES, 64 * 1024),
+    // Optional OCI runtime for stronger isolation on public deployments, e.g. "runsc" (gVisor).
+    runtime: process.env.SANDBOX_RUNTIME || "",
   },
 
   sarvam: {
@@ -55,8 +57,9 @@ const config = {
   },
 };
 
-if (config.env === "production" && config.jwtSecret === "dev-only-change-me") {
-  throw new Error("JWT_SECRET must be set in production");
+const PLACEHOLDER_SECRETS = ["dev-only-change-me", "change-me-in-production", "change-me-to-a-long-random-string"];
+if (config.env === "production" && (PLACEHOLDER_SECRETS.includes(config.jwtSecret) || config.jwtSecret.length < 16)) {
+  throw new Error("JWT_SECRET must be set to a random value of 16+ characters in production (openssl rand -hex 32)");
 }
 
 module.exports = config;

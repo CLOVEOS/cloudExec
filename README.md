@@ -138,6 +138,10 @@ spark-submit spark/batch_insights.py --source lake --path ./data/lake/executions
 
 ---
 
+## Deploy as a public service
+
+**[DEPLOY.md](DEPLOY.md)**: one cloud VM with automatic HTTPS (Caddy), gVisor-sandboxed code execution, backups and push-to-deploy from GitHub Actions. Setup is `deploy/setup-vm.sh`, then `deploy/deploy.sh`.
+
 ## Deploy to Kubernetes
 
 See [`k8s/`](k8s/README.md): API Deployment and HPA, worker Deployment with a Docker-in-Docker sidecar and HPA (optional KEDA scaling on Kafka consumer lag), web and Ingress, a Spark streaming Deployment, and an hourly Spark `CronJob`. CI (`.github/workflows/ci.yml`) tests all three components and pushes images to GHCR.

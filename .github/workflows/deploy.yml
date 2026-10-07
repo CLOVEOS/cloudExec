@@ -1,0 +1,46 @@
+name: Deploy
+
+# Continuous deployment: after CI passes on main, SSH into the VM and run
+# deploy/deploy.sh. Configure in GitHub → Settings → Secrets and variables → Actions:
+#   DEPLOY_HOST     VM public IP or hostname
+#   DEPLOY_USER     SSH user (e.g. ubuntu)
+#   DEPLOY_SSH_KEY  private key whose public half is in the VM's ~/.ssh/authorized_keys
+# Until DEPLOY_HOST is set this workflow is skipped.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Check deploy target is configured
+        id: cfg
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: echo "ready=$([ -n "$HOST" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy over SSH
+        if: steps.cfg.outputs.ready == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: cd ~/cloudExec && ./deploy/deploy.sh
+
+      - name: Skipped
+        if: steps.cfg.outputs.ready != 'true'
+        run: echo "DEPLOY_HOST secret not set — skipping deployment."
