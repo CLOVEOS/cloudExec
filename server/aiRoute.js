@@ -176,7 +176,7 @@ Return JSON:
 }`;
 
   try {
-    const { data, usage, model } = await sarvam.chatJson({ system, user, temperature: 0.4, maxTokens: 3000 });
+    const { data, usage, model } = await sarvam.chatJson({ system, user, temperature: 0.4 });
     metrics.aiRequests.inc({ feature: "coach", outcome: "ok" });
     await logInteraction({ userId, feature: "coach", responseLanguage: target, model, usage, result: data });
     res.json({ ...data, cached: false, generatedAt: new Date() });
