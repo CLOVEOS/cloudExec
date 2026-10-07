@@ -83,6 +83,12 @@ services:
       # Workers launch sandbox containers on the host daemon.
       - /var/run/docker.sock:/var/run/docker.sock
     user: root
+    # Workers serve /metrics on 9100 (no API on 8000), so check that instead.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:9100/metrics').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
     deploy:
       replicas: 2
     depends_on:
