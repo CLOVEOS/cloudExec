@@ -43,7 +43,8 @@ const config = {
     baseUrl: process.env.SARVAM_BASE_URL || "https://api.sarvam.ai",
     chatModel: process.env.SARVAM_CHAT_MODEL || "sarvam-105b",
     translateModel: process.env.SARVAM_TRANSLATE_MODEL || "sarvam-translate:v1",
-    timeoutMs: int(process.env.SARVAM_TIMEOUT_MS, 60000),
+    timeoutMs: int(process.env.SARVAM_TIMEOUT_MS, 120000),
+    maxTokens: int(process.env.SARVAM_MAX_TOKENS, 8192),
   },
 
   rateLimit: {

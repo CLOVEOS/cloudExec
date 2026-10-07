@@ -2,7 +2,7 @@ import axios from "axios";
 
 // In dev, Vite proxies /api → http://localhost:8000 (see vite.config.js).
 // In docker-compose / k8s, nginx proxies /api to the API service.
-const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || "/api", timeout: 60000 });
+const api = axios.create({ baseURL: import.meta.env.VITE_API_URL || "/api", timeout: 150000 }); // AI calls can take ~1-2 min
 
 const TOKEN_KEY = "cloudexec.token";
 
