@@ -131,3 +131,19 @@ test("sarvam: sends low reasoning effort and retries with reasoning off when tru
   assert.equal(bodies[1].reasoning_effort, null);
   assert.deepEqual(out.data, { done: 1 });
 });
+
+test("admin users: filter, sort with nulls last, CSV escaping", () => {
+  const { filterSort, csvCell } = require("../adminUsers");
+  const rows = [
+    { name: "Asha", email: "a@x", college: "", activityTier: "heavy", skillScore: 70, runs: 900 },
+    { name: "Bala", email: "b@x", college: "", activityTier: "low", skillScore: null, runs: 90 },
+    { name: "Chitra", email: "c@x", college: "MIT", activityTier: "low", skillScore: 40, runs: 120 },
+  ];
+  assert.deepEqual(filterSort(rows, { sort: "skillScore", order: "desc" }).map((r) => r.name), ["Asha", "Chitra", "Bala"]);
+  assert.deepEqual(filterSort(rows, { sort: "skillScore", order: "asc" }).map((r) => r.name), ["Chitra", "Asha", "Bala"]);
+  assert.deepEqual(filterSort(rows, { tier: "low", sort: "runs", order: "asc" }).map((r) => r.name), ["Bala", "Chitra"]);
+  assert.deepEqual(filterSort(rows, { q: "mit" }).map((r) => r.name), ["Chitra"]);
+  assert.equal(csvCell('He said "hi", ok'), '"He said ""hi"", ok"');
+  assert.equal(csvCell("=HYPERLINK(1)"), `"'=HYPERLINK(1)"`);
+  assert.equal(csvCell(null), "");
+});

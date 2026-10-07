@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import EditorPage from "./pages/Editor";
 import Dashboard from "./pages/Dashboard";
 import Platform from "./pages/Platform";
+import Users from "./pages/Users";
 import Profile from "./pages/Profile";
 import "./App.css";
 
@@ -40,7 +41,7 @@ export default function App() {
   const tabs = [
     ["editor", "Editor"],
     ["dashboard", "My Dashboard"],
-    ...(user.role === "admin" ? [["platform", "Platform"]] : []),
+    ...(user.role === "admin" ? [["platform", "Platform"], ["users", "Users"]] : []),
     ["profile", "Profile"],
   ];
 
@@ -72,6 +73,7 @@ export default function App() {
         {tab === "editor" && <EditorPage user={user} aiEnabled={aiEnabled} />}
         {tab === "dashboard" && <Dashboard user={user} aiEnabled={aiEnabled} />}
         {tab === "platform" && user.role === "admin" && <Platform />}
+        {tab === "users" && user.role === "admin" && <Users me={user} />}
         {tab === "profile" && <Profile user={user} onUpdate={setUser} />}
       </main>
     </div>
