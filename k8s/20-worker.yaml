@@ -1,0 +1,79 @@
+# Execution workers. Each pod runs a Docker-in-Docker sidecar so sandbox
+# containers stay inside the pod (no access to the node's daemon).
+# For stronger isolation in production, swap DinD for gVisor (runsc) or
+# Kata containers, or run sandboxes as Kubernetes Jobs with RuntimeClass.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: cloudexec
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: worker }
+  template:
+    metadata:
+      labels: { app: worker }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/cloveos/cloudexec-server:latest
+          command: ["node", "worker.js"]
+          envFrom:
+            - configMapRef: { name: cloudexec-config }
+            - secretRef: { name: cloudexec-secrets }
+          env:
+            - { name: DOCKER_HOST, value: "tcp://localhost:2375" }
+            - { name: WORKER_CONCURRENCY, value: "3" }
+          ports: [{ containerPort: 9100, name: metrics }]
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 256Mi }
+        - name: dind
+          image: docker:27-dind
+          args: ["--host=tcp://127.0.0.1:2375"]
+          env:
+            - { name: DOCKER_TLS_CERTIFY, value: "" }
+          securityContext:
+            privileged: true
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 3Gi }
+          volumeMounts:
+            - { name: dind-storage, mountPath: /var/lib/docker }
+      volumes:
+        - name: dind-storage
+          emptyDir: {}
+---
+# Scale on CPU here; with KEDA installed, prefer the Kafka consumer-lag
+# ScaledObject below (scales workers by how many jobs are waiting).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: worker
+  namespace: cloudexec
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: worker }
+  minReplicas: 2
+  maxReplicas: 12   # ≤ number of Kafka partitions
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 60 } }
+# ---
+# apiVersion: keda.sh/v1alpha1
+# kind: ScaledObject
+# metadata: { name: worker, namespace: cloudexec }
+# spec:
+#   scaleTargetRef: { name: worker }
+#   minReplicaCount: 2
+#   maxReplicaCount: 12
+#   triggers:
+#     - type: kafka
+#       metadata:
+#         bootstrapServers: kafka:9092
+#         consumerGroup: exec-workers
+#         topic: compile-jobs
+#         lagThreshold: "10"

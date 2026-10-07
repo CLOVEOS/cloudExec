@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cloudexec
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudexec-config
+  namespace: cloudexec
+data:
+  USE_KAFKA: "true"
+  # Managed services recommended in production: MongoDB Atlas, Confluent/MSK/Strimzi for Kafka.
+  MONGO_URI: "mongodb://mongodb:27017"
+  MONGO_DB: "cloudexec"
+  KAFKA_BROKERS: "kafka:9092"
+  KAFKA_PARTITIONS: "12"
+  KAFKA_REPLICATION_FACTOR: "1"
+  SARVAM_CHAT_MODEL: "sarvam-105b"
+  NODE_ENV: "production"
+---
+# Create the real secret with:
+#   kubectl -n cloudexec create secret generic cloudexec-secrets \
+#     --from-literal=JWT_SECRET=$(openssl rand -hex 32) \
+#     --from-literal=SARVAM_API_KEY=sk_... \
+#     --from-literal=ADMIN_EMAILS=you@example.com
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cloudexec-secrets
+  namespace: cloudexec
+type: Opaque
+stringData:
+  JWT_SECRET: "replace-me"
+  SARVAM_API_KEY: ""
+  ADMIN_EMAILS: ""

@@ -40,3 +40,7 @@ client/dist/
 Thumbs.db
 .vscode/
 *.log
+# Data lake / Spark local outputs
+data/
+spark-warehouse/
+.pytest_cache/
