@@ -27,10 +27,11 @@ function buildScript(lang) {
 }
 
 function dockerArgs(name, lang) {
-  const { memory, cpus } = config.sandbox;
+  const { memory, cpus, runtime } = config.sandbox;
   return [
     "run", "--rm", "-i",
     "--name", name,
+    ...(runtime ? [`--runtime=${runtime}`] : []),
     "--network=none",
     "--read-only",
     "--tmpfs", "/sandbox:rw,exec,size=64m,mode=1777",
