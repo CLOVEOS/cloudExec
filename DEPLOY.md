@@ -21,7 +21,7 @@ Only ports 22, 80 and 443 are open. Kafka, MongoDB, the API and the workers are 
 |---|---|---|---|
 | **AWS** | `t3.large` (2 vCPU/8 GB) or `m6i.xlarge` | ~$60–140/mo | AWS Educate / free credits for students |
 | **Google Cloud** | `e2-standard-4` | ~$100/mo | $300 free trial credit |
-| **Azure** | `B4ms` | ~$120/mo | $100 Azure for Students credit |
+| **Azure** | `B2as_v2` or `B2ms` (2 vCPU/8 GB) | ~$55–60/mo | $100 Azure for Students credit; see the Azure walkthrough below |
 | **DigitalOcean** | 8 GB / 4 vCPU droplet | ~$48/mo | GitHub Student Pack credit |
 | **Oracle Cloud** | Always Free Ampere A1, 4 OCPU / 24 GB | **free** | ARM CPU; see the note below |
 
@@ -32,10 +32,35 @@ When you create the VM:
 
 > **Oracle ARM note:** every image used here is published for arm64. This setup was only tested on x86-64, so watch `docker compose logs` on the first start.
 
+### Azure walkthrough (Azure for Students)
+
+1. Go to https://portal.azure.com, then **Create a resource → Virtual machine**.
+2. **Basics**
+   - Resource group: **Create new** → `cloudexec-rg`
+   - VM name: `cloudexec-vm`
+   - Region: **(Asia Pacific) Central India**, or any region where your size is available
+   - Image: **Ubuntu Server 24.04 LTS – x64 Gen2**
+   - Size: **Standard_B2as_v2** (2 vCPU, 8 GiB) or **Standard_B2ms**. If neither is offered, pick any size with 8 GiB of RAM.
+   - Authentication: **SSH public key**, username `azureuser`, key source **Generate new key pair** (or paste your own)
+   - Inbound ports: allow **SSH (22), HTTP (80), HTTPS (443)**
+3. **Disks**: OS disk 64 GiB, **Standard SSD**.
+4. **Networking**: keep the defaults. Azure creates a Standard **static** public IP, so your sslip.io address won't change.
+5. **Management**: turn on **Auto-shutdown** (e.g. 01:00 IST) to save credit while you're not demoing.
+6. **Review + create → Create**. If you chose "Generate new key pair", **download the `.pem` file**; Azure only offers it once.
+7. Open the VM, then copy its **Public IP address**.
+
+Connect from Linux or macOS:
+```bash
+chmod 600 ~/Downloads/cloudexec-vm_key.pem
+ssh -i ~/Downloads/cloudexec-vm_key.pem azureuser@<PUBLIC_IP>
+```
+
+**Saving credit:** **Stop** the VM in the portal when you're not using it. A stopped (deallocated) VM has no compute charge; you only pay a little for the disk and IP. Run `./deploy/deploy.sh` again after starting it if anything looks off, though Docker restarts everything automatically.
+
 ## 2. Set up the VM (one command)
 
 ```bash
-ssh ubuntu@<PUBLIC_IP>
+ssh ubuntu@<PUBLIC_IP>        # Azure: ssh -i <key>.pem azureuser@<PUBLIC_IP>
 curl -fsSL https://raw.githubusercontent.com/CLOVEOS/cloudExec/main/deploy/setup-vm.sh | bash
 exit            # log out and back in so docker works without sudo
 ```
