@@ -125,7 +125,15 @@ test("sarvam: sends low reasoning effort and retries with reasoning off when tru
         }),
     };
   };
-  const out = await sarvam.chatJson({ system: "s", user: "u" }, fakeFetch);
+  const config = require("../config");
+  const saved = config.sarvam.reasoningEffort;
+  config.sarvam.reasoningEffort = "low";
+  let out;
+  try {
+    out = await sarvam.chatJson({ system: "s", user: "u" }, fakeFetch);
+  } finally {
+    config.sarvam.reasoningEffort = saved;
+  }
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].reasoning_effort, "low");
   assert.equal(bodies[1].reasoning_effort, null);
@@ -146,4 +154,15 @@ test("admin users: filter, sort with nulls last, CSV escaping", () => {
   assert.equal(csvCell('He said "hi", ok'), '"He said ""hi"", ok"');
   assert.equal(csvCell("=HYPERLINK(1)"), `"'=HYPERLINK(1)"`);
   assert.equal(csvCell(null), "");
+});
+
+test("sarvam: reasoning is off by default (one call, reasoning_effort null)", async () => {
+  const bodies = [];
+  const fakeFetch = async (url, opts) => {
+    bodies.push(JSON.parse(opts.body));
+    return { ok: true, text: async () => JSON.stringify({ choices: [{ message: { content: '{"ok":1}' }, finish_reason: "stop" }] }) };
+  };
+  await sarvam.chatJson({ system: "s", user: "u" }, fakeFetch);
+  assert.equal(bodies.length, 1);
+  assert.equal(bodies[0].reasoning_effort, null);
 });
