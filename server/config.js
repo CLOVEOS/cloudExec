@@ -48,7 +48,8 @@ const config = {
     timeoutMs: int(process.env.SARVAM_TIMEOUT_MS, 120000),
     maxTokens: int(process.env.SARVAM_MAX_TOKENS, 8192),
     // low | medium | high | none (disable) | default (don't send the field)
-    reasoningEffort: process.env.SARVAM_REASONING_EFFORT || "low",
+    // sarvam-105b exhausted 8k tokens reasoning even at "low", so reasoning is off by default.
+    reasoningEffort: process.env.SARVAM_REASONING_EFFORT || "none",
   },
 
   rateLimit: {
