@@ -1,0 +1,81 @@
+# Data lake volume shared by the streaming ingest and the batch job.
+# On a cloud provider, point LAKE_PATH at object storage instead
+# (s3a://bucket/lake, gs://..., abfss://...) and drop the PVC.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lake
+  namespace: cloudexec
+spec:
+  accessModes: [ReadWriteMany]
+  resources:
+    requests: { storage: 50Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-streaming
+  namespace: cloudexec
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: spark-streaming }
+  template:
+    metadata:
+      labels: { app: spark-streaming }
+    spec:
+      containers:
+        - name: spark
+          image: ghcr.io/cloveos/cloudexec-spark:latest
+          command: ["spark-submit"]
+          args:
+            - --master
+            - local[2]
+            - --packages
+            - org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.3
+            - streaming_ingest.py
+          envFrom:
+            - configMapRef: { name: cloudexec-config }
+          env:
+            - { name: LAKE_PATH, value: /data/lake/executions }
+            - { name: CHECKPOINT_PATH, value: /data/checkpoints }
+          volumeMounts:
+            - { name: lake, mountPath: /data }
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 2Gi }
+      volumes:
+        - name: lake
+          persistentVolumeClaim: { claimName: lake }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: spark-insights
+  namespace: cloudexec
+spec:
+  schedule: "7 * * * *"   # hourly
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: spark
+              image: ghcr.io/cloveos/cloudexec-spark:latest
+              command: ["spark-submit"]
+              args: ["--master", "local[4]", "batch_insights.py", "--source", "lake"]
+              envFrom:
+                - configMapRef: { name: cloudexec-config }
+              env:
+                - { name: LAKE_PATH, value: /data/lake/executions }
+              volumeMounts:
+                - { name: lake, mountPath: /data }
+              resources:
+                requests: { cpu: "1", memory: 2Gi }
+                limits: { cpu: "4", memory: 6Gi }
+          volumes:
+            - name: lake
+              persistentVolumeClaim: { claimName: lake }

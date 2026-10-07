@@ -1,67 +1,35 @@
-const { Kafka } = require("kafkajs");
-const { runDocker } = require("./executor");
-const { saveExecution } = require("./db");
+const config = require("./config");
+const { kafka } = require("./kafkaProducer");
+const { processJob } = require("./jobs");
 
-const kafka = new Kafka({
-  clientId: "cloudexec-consumer",
-  brokers: [process.env.KAFKA_BROKER || "localhost:9092"],
-});
+// How many jobs one worker process runs at once (one per partition it owns).
+const CONCURRENCY = parseInt(process.env.WORKER_CONCURRENCY || "4", 10);
 
-const consumer = kafka.consumer({ groupId: "exec-workers" });
-
-
-const resultStore = new Map();
+const consumer = kafka.consumer({ groupId: config.kafka.groupId });
 
 async function startConsumer() {
   await consumer.connect();
-  await consumer.subscribe({ topic: "compile-jobs", fromBeginning: false });
-
-  console.log("✅ Kafka consumer running");
+  await consumer.subscribe({ topic: config.kafka.jobsTopic, fromBeginning: false });
+  console.log(`✅ Kafka consumer running (group=${config.kafka.groupId}, concurrency=${CONCURRENCY})`);
 
   await consumer.run({
-    eachMessage: async ({ message }) => {
+    partitionsConsumedConcurrently: CONCURRENCY,
+    eachMessage: async ({ message, partition }) => {
       let job;
       try {
         job = JSON.parse(message.value.toString());
       } catch {
+        console.warn("Skipping malformed job message");
         return;
       }
-
-      const { jobId, language, code, input, timestamp } = job;
-
-      console.log(`🔧 Processing job ${jobId} [${language}]`);
-
-      const result = await runDocker(language, code, input);
-
-      // Store result for polling
-      resultStore.set(jobId, {
-        ...result,
-        status: result.exitCode === 0 ? "success" : "error",
-        jobId,
-      });
-
-      // Clean up after 5 min
-      setTimeout(() => resultStore.delete(jobId), 5 * 60 * 1000);
-
-      // Log to MongoDB
-      try {
-        await saveExecution({
-          jobId,
-          language,
-          exitCode: result.exitCode,
-          runtime: result.runtime,
-          hasError: !!result.stderr,
-          timestamp: timestamp || new Date().toISOString(),
-        });
-      } catch (e) {
-        console.warn("MongoDB log failed:", e.message);
-      }
+      console.log(`🔧 [p${partition}] job ${job.jobId} (${job.language}) user=${job.userId}`);
+      await processJob(job);
     },
   });
 }
 
-function getResult(jobId) {
-  return resultStore.get(jobId) || null;
+async function stopConsumer() {
+  await consumer.disconnect();
 }
 
-module.exports = { startConsumer, getResult };
+module.exports = { startConsumer, stopConsumer };
