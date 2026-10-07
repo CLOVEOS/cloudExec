@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.utils import AnalysisException
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import insights_lib as lib  # noqa: E402
@@ -44,26 +45,44 @@ def parse_args():
     p.add_argument("--sink", choices=["mongo", "files"], default="mongo")
     p.add_argument("--out", default="/tmp/cloudexec_gold")
     p.add_argument("--days", type=int, default=180, help="look-back window")
+    p.add_argument(
+        "--fallback-mongo",
+        action="store_true",
+        help="if the lake is empty or missing (e.g. streaming still catching up), read MongoDB instead",
+    )
     return p.parse_args()
+
+
+def read_mongo(spark, args):
+    df = (
+        spark.read.format("mongodb")
+        .option("connection.uri", args.mongo_uri)
+        .option("database", args.mongo_db)
+        .option("collection", "executions")
+        # Push the filter down to Mongo instead of scanning code/stdout.
+        .option("aggregation.pipeline", '[{"$match": {"status": {"$in": ["success", "error"]}}}]')
+        .load()
+    )
+    if "userId" in df.columns:
+        df = df.withColumn("userId", df["userId"].cast("string"))
+    return df
 
 
 def read_events(spark, args):
     if args.source == "lake":
-        df = spark.read.parquet(args.path)
+        try:
+            df = spark.read.parquet(args.path)
+        except AnalysisException as e:
+            # "Unable to infer schema" / "Path does not exist": nothing streamed yet.
+            if not args.fallback_mongo:
+                raise SystemExit(f"Data lake at {args.path} is empty or missing ({e.getMessage().splitlines()[0]}). "
+                                 "Is spark-streaming running? Re-run with --fallback-mongo to use MongoDB.")
+            print(f"⚠️  Data lake at {args.path} is empty — falling back to MongoDB")
+            df = read_mongo(spark, args)
     elif args.source == "jsonl":
         df = spark.read.json(args.path)
     else:
-        df = (
-            spark.read.format("mongodb")
-            .option("connection.uri", args.mongo_uri)
-            .option("database", args.mongo_db)
-            .option("collection", "executions")
-            # Push the projection + filter down to Mongo instead of scanning code/stdout.
-            .option("aggregation.pipeline", '[{"$match": {"status": {"$in": ["success", "error"]}}}]')
-            .load()
-        )
-        if "userId" in df.columns:
-            df = df.withColumn("userId", df["userId"].cast("string"))
+        df = read_mongo(spark, args)
     present = [c for c in COLUMNS if c in df.columns]
     return df.select(*present)
 
