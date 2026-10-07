@@ -65,7 +65,8 @@ def main():
         .option("subscribe", args.topic)
         .option("startingOffsets", "earliest")
         .option("failOnDataLoss", "false")
-        .option("maxOffsetsPerTrigger", 200000)
+        # Bounded micro-batches so a big backlog (e.g. a seed run) can't OOM a small driver.
+        .option("maxOffsetsPerTrigger", int(os.getenv("MAX_OFFSETS_PER_TRIGGER", "50000")))
         .load()
     )
 
