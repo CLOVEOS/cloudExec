@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import api, { errMsg, LANG_COLORS, LANG_LABELS, UI_LANGUAGES } from "../api";
 import { BarList, CalendarHeatmap, DailyBars, HourlyBars, ScoreRing, StatTile } from "../components/Charts";
 
@@ -36,14 +36,38 @@ export default function Dashboard({ user, aiEnabled, viewUser, onBack }) {
     // Reload only when the viewed user changes; `load` is recreated each render.
   }, [viewUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The plan is generated in the background (it can take minutes); the API
+  // answers 202 while it works and we check back every few seconds.
+  const coachTimer = useRef(null);
+  useEffect(() => () => clearTimeout(coachTimer.current), []);
+
   async function getCoaching(refresh = false) {
-    setCoach({ loading: true });
-    try {
-      const { data } = await api.post("/ai/coach", { responseLanguage: coachLang, refresh });
-      setCoach({ data });
-    } catch (e) {
-      setCoach({ error: errMsg(e) });
-    }
+    clearTimeout(coachTimer.current);
+    const started = Date.now();
+    const lang = coachLang;
+    setCoach({ loading: true, seconds: 0 });
+
+    const ask = async (first) => {
+      try {
+        const res = await api.post("/ai/coach", { responseLanguage: lang, refresh: first && refresh });
+        if (res.status === 202 || res.data?.pending) {
+          const seconds = Math.round((Date.now() - started) / 1000);
+          if (seconds > 600) return setCoach({ error: "The AI is taking unusually long. Please try again." });
+          setCoach({ loading: true, seconds });
+          coachTimer.current = setTimeout(() => ask(false), 4000);
+          return;
+        }
+        setCoach({ data: res.data });
+      } catch (e) {
+        // A dropped connection is not fatal: the job keeps running server-side.
+        if (!e.response && Date.now() - started < 600000) {
+          coachTimer.current = setTimeout(() => ask(false), 4000);
+          return;
+        }
+        setCoach({ error: errMsg(e) });
+      }
+    };
+    ask(true);
   }
 
   const back = onBack && (
@@ -212,7 +236,7 @@ export default function Dashboard({ user, aiEnabled, viewUser, onBack }) {
                   {Object.entries(UI_LANGUAGES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
                 <button className="refresh-btn" onClick={() => getCoaching(Boolean(coach?.data))} disabled={coach?.loading}>
-                  {coach?.loading ? "Thinking…" : coach?.data ? "Regenerate" : "Get my study plan"}
+                  {coach?.loading ? `Writing your plan… ${coach.seconds || 0}s` : coach?.data ? "Regenerate" : "Get my study plan"}
                 </button>
               </div>
             ) : (

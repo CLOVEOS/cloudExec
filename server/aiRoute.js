@@ -133,38 +133,17 @@ Return JSON with exactly these keys:
  * Personalised coaching report built from the learner's dashboard data
  * (real-time aggregates + Spark-computed insights).
  */
-router.post("/coach", async (req, res) => {
-  const userId = req.user.id;
-  const target = await userLanguage(userId, req.body.responseLanguage);
-  const interactions = await col("ai_interactions");
+// Coach plans can take minutes (a large reasoning model). Holding the HTTP
+// request open that long gets it cut by the proxies in front of the API
+// ("Network Error" in the browser, then an instant cached answer on retry).
+// So generation runs in the background and the client polls this endpoint.
+const coachJobs = new Map(); // `${userId}:${lang}` -> { startedAt, error? }
 
-  if (!req.body.refresh) {
-    const cached = await interactions.findOne(
-      {
-        userId,
-        feature: "coach",
-        responseLanguage: target,
-        promptVersion: PROMPT_VERSION,
-        createdAt: { $gte: new Date(Date.now() - COACH_CACHE_MS) },
-      },
-      { sort: { createdAt: -1 } }
-    );
-    if (cached?.result) return res.json({ ...cached.result, cached: true, generatedAt: cached.createdAt });
-  }
-
+async function generateCoach(userId, target) {
   const [dash, profile] = await Promise.all([
     getUserDashboard(userId, { days: 30 }),
     (await col("users")).findOne({ _id: new ObjectId(userId) }, { projection: { name: 1, goal: 1, college: 1 } }),
   ]);
-  if (!dash.summary.runs) {
-    return res.json({
-      headline: "Run your first program to unlock personalised coaching!",
-      strengths: [],
-      focus_areas: [],
-      weekly_plan: [],
-      motivation: "",
-    });
-  }
 
   const context = {
     name: profile?.name,
@@ -201,14 +180,62 @@ Return JSON:
   "motivation": "one short motivating line"
 }`;
 
-  try {
-    const { data, usage, model } = await sarvam.chatJson({ system, user, temperature: 0.4 });
-    metrics.aiRequests.inc({ feature: "coach", outcome: "ok" });
-    await logInteraction({ userId, feature: "coach", responseLanguage: target, promptVersion: PROMPT_VERSION, model, usage, result: data });
-    res.json({ ...data, cached: false, generatedAt: new Date() });
-  } catch (err) {
-    aiError(res, "coach", err);
+  const { data, usage, model } = await sarvam.chatJson({ system, user, temperature: 0.4 });
+  metrics.aiRequests.inc({ feature: "coach", outcome: "ok" });
+  await logInteraction({ userId, feature: "coach", responseLanguage: target, promptVersion: PROMPT_VERSION, model, usage, result: data });
+}
+
+/**
+ * POST /ai/coach {responseLanguage, refresh?}
+ *  → 200 plan (cached or just finished)
+ *  → 202 {pending:true} while it is being generated; call again (without refresh) to poll
+ */
+router.post("/coach", async (req, res) => {
+  const userId = req.user.id;
+  const target = await userLanguage(userId, req.body.responseLanguage);
+  const key = `${userId}:${target}`;
+  const job = coachJobs.get(key);
+
+  if (job?.error) {
+    coachJobs.delete(key);
+    return aiError(res, "coach", job.error);
   }
+  if (job) return res.status(202).json({ pending: true, startedAt: job.startedAt });
+
+  if (!req.body.refresh) {
+    const cached = await (await col("ai_interactions")).findOne(
+      {
+        userId,
+        feature: "coach",
+        responseLanguage: target,
+        promptVersion: PROMPT_VERSION,
+        createdAt: { $gte: new Date(Date.now() - COACH_CACHE_MS) },
+      },
+      { sort: { createdAt: -1 } }
+    );
+    if (cached?.result) return res.json({ ...cached.result, cached: true, generatedAt: cached.createdAt });
+  }
+
+  const hasRuns = await (await col("executions")).countDocuments({ userId }, { limit: 1 });
+  if (!hasRuns) {
+    return res.json({
+      headline: "Run your first program to unlock personalised coaching!",
+      strengths: [],
+      focus_areas: [],
+      weekly_plan: [],
+      motivation: "",
+    });
+  }
+
+  const startedAt = new Date();
+  coachJobs.set(key, { startedAt });
+  generateCoach(userId, target)
+    .then(() => coachJobs.delete(key))
+    .catch((error) => {
+      coachJobs.set(key, { startedAt, error });
+      setTimeout(() => coachJobs.get(key)?.error === error && coachJobs.delete(key), 10 * 60 * 1000).unref();
+    });
+  res.status(202).json({ pending: true, startedAt });
 });
 
 router.post("/translate", async (req, res) => {
