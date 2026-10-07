@@ -10,6 +10,25 @@ const { LANGUAGES } = require("./languages");
 
 const router = express.Router();
 const COACH_CACHE_MS = 6 * 60 * 60 * 1000;
+const PROMPT_VERSION = 2; // bump to invalidate cached coach plans after prompt changes
+
+/**
+ * Style guide for answering in an Indian language. Without it the model
+ * drifts into heavy English/Indic code-mixing ("success rateతో ... reach అయ్యారు"),
+ * which reads awkwardly. English stays only for genuinely technical tokens.
+ */
+function languageGuide(target) {
+  if (target === "en-IN") return "Write in clear, simple English.";
+  const name = sarvam.UI_LANGUAGES[target];
+  return [
+    `Write every sentence in natural, fluent ${name} using ${name} script, the way a good ${name}-speaking teacher explains to a student.`,
+    "Use complete, grammatical sentences. Do NOT mix English words into sentences when a common native word exists",
+    `(e.g. write the ${name} words for "success rate", "improvement", "practice", "week", "daily", "strong", "review").`,
+    "Keep ONLY these in English/Latin script: programming language names, error/exception names, code identifiers,",
+    "library or keyword names (e.g. Java, NullPointerException, ArrayList, for-loop).",
+    "Write numbers as digits. Keep sentences short and clear.",
+  ].join(" ");
+}
 
 async function userLanguage(userId, requested) {
   if (sarvam.UI_LANGUAGES[requested]) return requested;
@@ -57,7 +76,6 @@ router.post("/explain", async (req, res) => {
   if (!LANGUAGES[language]) return res.status(400).json({ error: "Unsupported language" });
 
   const target = await userLanguage(userId, req.body.responseLanguage);
-  const langName = sarvam.UI_LANGUAGES[target];
 
   // Personal context: what this learner keeps getting wrong.
   const history = await (await col("executions"))
@@ -75,8 +93,8 @@ router.post("/explain", async (req, res) => {
   const system =
     "You are a patient programming mentor for Indian college students. " +
     "Reply ONLY with a JSON object. " +
-    `Write all prose fields in ${langName} (use simple, conversational ${langName}; keep code, identifiers, ` +
-    "keywords and error names in English). fixed_code must be the complete corrected program, not a diff.";
+    `All prose fields must follow this language guide: ${languageGuide(target)} ` +
+    "Keys stay in English. fixed_code must be the complete corrected program, not a diff (comments in it may stay English).";
 
   const user = `Language: ${LANGUAGES[language].label}
 Learner's recurring ${LANGUAGES[language].label} errors so far: ${historyText}
@@ -122,7 +140,13 @@ router.post("/coach", async (req, res) => {
 
   if (!req.body.refresh) {
     const cached = await interactions.findOne(
-      { userId, feature: "coach", responseLanguage: target, createdAt: { $gte: new Date(Date.now() - COACH_CACHE_MS) } },
+      {
+        userId,
+        feature: "coach",
+        responseLanguage: target,
+        promptVersion: PROMPT_VERSION,
+        createdAt: { $gte: new Date(Date.now() - COACH_CACHE_MS) },
+      },
       { sort: { createdAt: -1 } }
     );
     if (cached?.result) return res.json({ ...cached.result, cached: true, generatedAt: cached.createdAt });
@@ -162,7 +186,9 @@ router.post("/coach", async (req, res) => {
   const langName = sarvam.UI_LANGUAGES[target];
   const system =
     "You are an encouraging coding coach. Analyse the learner's real activity data and give specific, " +
-    `data-backed advice. Reply ONLY with a JSON object, prose in ${langName} (technical terms in English).`;
+    "data-backed advice that cites the learner's actual numbers. Reply ONLY with a JSON object; keys stay in English. " +
+    `All values must follow this language guide: ${languageGuide(target)} ` +
+    `The "day" values are short ${langName} weekday names.`;
   const user = `Learner data (JSON):
 ${JSON.stringify(context)}
 
@@ -178,7 +204,7 @@ Return JSON:
   try {
     const { data, usage, model } = await sarvam.chatJson({ system, user, temperature: 0.4 });
     metrics.aiRequests.inc({ feature: "coach", outcome: "ok" });
-    await logInteraction({ userId, feature: "coach", responseLanguage: target, model, usage, result: data });
+    await logInteraction({ userId, feature: "coach", responseLanguage: target, promptVersion: PROMPT_VERSION, model, usage, result: data });
     res.json({ ...data, cached: false, generatedAt: new Date() });
   } catch (err) {
     aiError(res, "coach", err);
