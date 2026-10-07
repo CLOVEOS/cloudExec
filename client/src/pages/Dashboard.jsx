@@ -13,24 +13,28 @@ const CATEGORY_LABELS = {
 const TREND_LABEL = { improving: "▲ Improving", declining: "▼ Declining", steady: "● Steady", new: "New", inactive: "Inactive this week" };
 const fmtHour = (h) => (h == null ? "—" : `${String(h).padStart(2, "0")}:00`);
 
-export default function Dashboard({ user, aiEnabled }) {
+// `viewUser` (admin only): show another user's dashboard read-only.
+export default function Dashboard({ user, aiEnabled, viewUser, onBack }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   const [coach, setCoach] = useState(null);
   const [coachLang, setCoachLang] = useState(user.preferredLanguage || "en-IN");
 
+  const subject = viewUser || user;
+  const firstName = subject.name.split(" ")[0];
   const load = () =>
     api
-      .get("/me/dashboard", { params: { days: 120 } })
+      .get(viewUser ? `/admin/users/${viewUser.id}/dashboard` : "/me/dashboard", { params: { days: 120 } })
       .then(({ data }) => {
-        setData(data);
+        setData(viewUser ? data.dashboard : data);
         setError("");
       })
       .catch((e) => setError(errMsg(e)));
 
   useEffect(() => {
     load();
-  }, []);
+    // Reload only when the viewed user changes; `load` is recreated each render.
+  }, [viewUser?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function getCoaching(refresh = false) {
     setCoach({ loading: true });
@@ -42,8 +46,11 @@ export default function Dashboard({ user, aiEnabled }) {
     }
   }
 
-  if (error) return <div className="page"><div className="analytics-error">{error}</div></div>;
-  if (!data) return <div className="page"><div className="analytics-loading">Loading your dashboard…</div></div>;
+  const back = onBack && (
+    <button className="refresh-btn back-btn" onClick={onBack}>← All users</button>
+  );
+  if (error) return <div className="page">{back}<div className="analytics-error">{error}</div></div>;
+  if (!data) return <div className="page">{back}<div className="analytics-loading">Loading dashboard…</div></div>;
 
   const s = data.summary;
   const ins = data.insights;
@@ -51,7 +58,8 @@ export default function Dashboard({ user, aiEnabled }) {
   if (!s.runs) {
     return (
       <div className="page">
-        <h2 className="page-title">Welcome, {user.name.split(" ")[0]} 👋</h2>
+        {back}
+        <h2 className="page-title">{viewUser ? `${subject.name} hasn't run any code yet` : `Welcome, ${firstName} 👋`}</h2>
         <div className="analytics-card empty-state">
           Run your first program in the <b>Editor</b> tab. Every run feeds your personal dashboard: skills per language,
           common mistakes, activity streaks and an AI study plan in {UI_LANGUAGES[user.preferredLanguage] || "English"}.
@@ -63,7 +71,16 @@ export default function Dashboard({ user, aiEnabled }) {
   return (
     <div className="page">
       <div className="analytics-header">
-        <h2 className="page-title">Hi {user.name.split(" ")[0]}, here's your progress</h2>
+        <h2 className="page-title">
+          {back}
+          {viewUser ? (
+            <>
+              {subject.name}'s progress <span className="muted small">· {subject.email}</span>
+            </>
+          ) : (
+            <>Hi {firstName}, here's your progress</>
+          )}
+        </h2>
         <button className="refresh-btn" onClick={load}>↻ Refresh</button>
       </div>
 
@@ -184,7 +201,8 @@ export default function Dashboard({ user, aiEnabled }) {
           </div>
         )}
 
-        {/* Sarvam AI coach */}
+        {/* Sarvam AI coach (only for your own dashboard) */}
+        {!viewUser && (
         <div className="analytics-card wide coach-card">
           <div className="coach-head">
             <div className="card-title">✦ Personal AI coach <span className="muted small">· Sarvam AI</span></div>
@@ -236,6 +254,7 @@ export default function Dashboard({ user, aiEnabled }) {
             </div>
           )}
         </div>
+        )}
 
         <div className="analytics-card wide">
           <div className="card-title">Recent runs</div>

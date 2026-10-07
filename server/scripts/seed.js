@@ -5,6 +5,10 @@
 //   node scripts/seed.js --users 500 --events 200000 --days 60
 //   node scripts/seed.js --users 50 --events 5000 --jsonl ../data/lake/seed.jsonl   (no Mongo, file only)
 //   node scripts/seed.js --users 100 --events 20000 --kafka   (also stream events to Kafka → Spark streaming)
+//   node scripts/seed.js --users 1000 --tiers --min-solved 51 --kafka
+//       Activity tiers instead of --events: 20% heavy (500-900 runs), 50% medium
+//       (180-350), 30% low (90-140). Every user ends with at least --min-solved
+//       successful runs (default 51 with --tiers).
 //
 // Each synthetic user has a persona (skill, favourite languages, active
 // hours, typical mistakes) and gets better over time, so the batch job has
@@ -22,6 +26,9 @@ const args = Object.fromEntries(
 );
 const N_USERS = parseInt(args.users || "200", 10);
 const N_EVENTS = parseInt(args.events || "50000", 10);
+const TIERS = args.tiers === "true";
+const MIN_SOLVED = parseInt(args["min-solved"] || (TIERS ? "51" : "0"), 10);
+const TIER_RUNS = { heavy: [500, 900], medium: [180, 350], low: [90, 140] };
 const DAYS = parseInt(args.days || "60", 10);
 const JSONL = args.jsonl;
 const DEMO_PASSWORD = args.password || "password123";
@@ -61,6 +68,7 @@ function makePersona(i) {
     skill,
     learningRate: 0.002 + rand() * 0.01, // per active day
     activity: Math.pow(rand(), 1.6) + 0.05, // heavy-tailed
+    tier: weighted([["heavy", 2], ["medium", 5], ["low", 3]]),
     peakHour: weighted([[10, 2], [14, 2], [17, 1], [21, 4], [23, 3], [1, 1]]),
     langWeights,
     weakErrors,
@@ -72,8 +80,14 @@ function* generateEvents(users) {
   const now = Date.now();
   const totalActivity = users.reduce((s, u) => s + u.persona.activity, 0);
   for (const u of users) {
-    const n = Math.max(1, Math.round((u.persona.activity / totalActivity) * N_EVENTS));
     const p = u.persona;
+    let n = Math.max(1, Math.round((p.activity / totalActivity) * N_EVENTS));
+    if (TIERS) {
+      const [lo, hi] = TIER_RUNS[p.tier];
+      n = lo + Math.floor(rand() * (hi - lo + 1));
+    }
+    n = Math.max(n, MIN_SOLVED);
+    let solved = 0;
     for (let k = 0; k < n; k++) {
       const progress = k / n; // later events → more experience
       const daysAgo = Math.floor(DAYS * (1 - progress) * (0.85 + 0.15 * rand()));
@@ -84,7 +98,11 @@ function* generateEvents(users) {
 
       const language = weighted(p.langWeights);
       const skillNow = Math.min(0.98, p.skill + p.learningRate * progress * DAYS);
-      const hasError = rand() > skillNow * 0.85 + 0.1;
+      // Guarantee MIN_SOLVED: once the remaining runs equal the solves still
+      // needed, the learner gets everything right (reads as late improvement).
+      const mustSolve = MIN_SOLVED - solved >= n - k;
+      const hasError = !mustSolve && rand() > skillNow * 0.85 + 0.1;
+      if (!hasError) solved++;
       let errorType = null;
       let errorCategory = "none";
       if (hasError) {
@@ -141,6 +159,7 @@ async function main() {
         college: "Demo Institute of Technology",
         goal: "Crack placements",
         synthetic: true,
+        ...(TIERS ? { activityTier: persona.tier } : {}),
         createdAt: new Date(Date.now() - DAYS * 86400000),
       },
     };
