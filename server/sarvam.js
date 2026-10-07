@@ -60,12 +60,32 @@ function parseJsonReply(content) {
   }
 }
 
+/** One chat call; returns parsed JSON or throws with finish_reason for diagnosis. */
+async function chatOnce(body, fetchImpl) {
+  const res = await post("/v1/chat/completions", body, fetchImpl);
+  const choice = res.choices?.[0] || {};
+  const msg = choice.message || {};
+  try {
+    // Some replies leave `content` empty and put everything in reasoning_content.
+    return { data: parseJsonReply(msg.content || msg.reasoning_content), usage: res.usage || {}, model: res.model || body.model };
+  } catch (e) {
+    const err = new Error(
+      `${e.message} (finish_reason=${choice.finish_reason}, completion_tokens=${res.usage?.completion_tokens ?? "?"})`
+    );
+    err.truncated = choice.finish_reason === "length";
+    throw err;
+  }
+}
+
 /**
  * Chat completion that must return a JSON object.
+ *
+ * sarvam-105b reasons before answering and those tokens count against
+ * max_tokens. Reasoning is set to SARVAM_REASONING_EFFORT (default "low");
+ * if the model still runs out of budget before writing the answer, or the
+ * API rejects the setting, we retry once with reasoning disabled.
  * @returns {Promise<{data: object, usage: object, model: string}>}
  */
-// sarvam-105b is a reasoning model: its thinking tokens count against max_tokens,
-// so the budget must leave room for the final JSON answer after the reasoning.
 async function chatJson({ system, user, maxTokens = config.sarvam.maxTokens, temperature = 0.2 }, fetchImpl) {
   const body = {
     model: config.sarvam.chatModel,
@@ -77,19 +97,17 @@ async function chatJson({ system, user, maxTokens = config.sarvam.maxTokens, tem
     max_tokens: maxTokens,
     response_format: { type: "json_object" },
   };
-  const res = await post("/v1/chat/completions", body, fetchImpl);
-  const choice = res.choices?.[0] || {};
-  const msg = choice.message || {};
-  let data;
+  const effort = config.sarvam.reasoningEffort;
+  if (effort !== "default") body.reasoning_effort = effort === "none" ? null : effort;
+
   try {
-    // Some replies leave `content` empty and put everything in reasoning_content.
-    data = parseJsonReply(msg.content || msg.reasoning_content);
+    return await chatOnce(body, fetchImpl);
   } catch (e) {
-    throw new Error(
-      `${e.message} (finish_reason=${choice.finish_reason}, completion_tokens=${res.usage?.completion_tokens ?? "?"})`
-    );
+    const retryable = e.truncated || (e instanceof SarvamError && e.status === 400);
+    if (!retryable || body.reasoning_effort === null) throw e;
+    console.warn(`Sarvam: retrying with reasoning disabled (${e.message.slice(0, 120)})`);
+    return chatOnce({ ...body, reasoning_effort: null }, fetchImpl);
   }
-  return { data, usage: res.usage || {}, model: res.model || body.model };
 }
 
 /** Translate text, chunking on paragraph boundaries to respect the 2000-char limit. */

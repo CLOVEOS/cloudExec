@@ -110,3 +110,24 @@ test("sarvam: falls back to reasoning_content and reports truncation", async () 
     /finish_reason=length/
   );
 });
+
+test("sarvam: sends low reasoning effort and retries with reasoning off when truncated", async () => {
+  const bodies = [];
+  const fakeFetch = async (url, opts) => {
+    const body = JSON.parse(opts.body);
+    bodies.push(body);
+    const truncated = bodies.length === 1;
+    return {
+      ok: true,
+      text: async () =>
+        JSON.stringify({
+          choices: [{ message: { content: truncated ? null : '{"done":1}', reasoning_content: truncated ? "hmm" : null }, finish_reason: truncated ? "length" : "stop" }],
+        }),
+    };
+  };
+  const out = await sarvam.chatJson({ system: "s", user: "u" }, fakeFetch);
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].reasoning_effort, "low");
+  assert.equal(bodies[1].reasoning_effort, null);
+  assert.deepEqual(out.data, { done: 1 });
+});
