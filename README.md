@@ -178,6 +178,12 @@ For production, use managed Kafka (MSK / Confluent / Strimzi) and MongoDB Atlas,
 make test   # server unit tests (node:test), client lint+build, Spark pytest
 ```
 
+Evaluation (benchmark of 63 labelled programs, Sarvam explain quality, platform stats): see [`server/eval/README.md`](server/eval/README.md).
+
+```bash
+cd server && node scripts/evaluate.js --sandbox
+```
+
 ## Project structure
 
 ```

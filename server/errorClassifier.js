@@ -33,7 +33,7 @@ const RULES = [
   // ── C / C++ ──
   [/error: expected [^\n]*before|error: expected ';'|error: stray/, "CSyntaxError", CATEGORY.SYNTAX],
   [/undefined reference to/, "UndefinedReference", CATEGORY.COMPILE],
-  [/error: '[^']+' was not declared in this scope|error: use of undeclared identifier|error: unknown type name/, "UndeclaredIdentifier", CATEGORY.COMPILE],
+  [/error: '[^']+' was not declared in this scope|error: use of undeclared identifier|error: '[^']+' undeclared|error: unknown type name/, "UndeclaredIdentifier", CATEGORY.COMPILE],
   [/error: no matching function for call/, "NoMatchingFunction", CATEGORY.COMPILE],
   [/\b(main\.(c|cpp)):\d+:\d+: error:/, "CCompileError", CATEGORY.COMPILE],
   [/Segmentation fault|SIGSEGV/, "SegmentationFault", CATEGORY.RUNTIME],
@@ -52,6 +52,8 @@ const RULES = [
 
 function classify({ stderr = "", exitCode = 0, timedOut = false, oomKilled = false, outputTruncated = false }) {
   if (timedOut) return { errorCategory: CATEGORY.TIMEOUT, errorType: "TimeLimitExceeded" };
+  // The executor kills runaway output itself, which also exits 137: check it before the OOM rule.
+  if (outputTruncated && exitCode !== 0) return { errorCategory: CATEGORY.OUTPUT, errorType: "OutputLimitExceeded" };
   if (oomKilled || exitCode === 137) return { errorCategory: CATEGORY.MEMORY, errorType: "MemoryLimitExceeded" };
 
   const text = stderr || "";

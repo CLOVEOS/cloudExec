@@ -1,0 +1,131 @@
+{
+  "at": "2026-11-18T12:30:42.751Z",
+  "args": {
+    "sandbox": true
+  },
+  "sandbox": {
+    "benchmark": {
+      "programs": 63,
+      "correctPrograms": 10,
+      "buggyPrograms": 53,
+      "languages": 5
+    },
+    "executionCorrectness": 100,
+    "completionRate": 100,
+    "limitContainment": {
+      "contained": 13,
+      "of": 13,
+      "pct": 100
+    },
+    "detection": {
+      "precision": 1,
+      "recall": 1,
+      "f1": 1
+    },
+    "categoryAccuracy": 98.4,
+    "categoryMacro": {
+      "precision": 0.98,
+      "recall": 0.994,
+      "f1": 0.986
+    },
+    "categoryPerClass": [
+      {
+        "class": "compile_error",
+        "support": 9,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      {
+        "class": "memory_limit",
+        "support": 5,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      {
+        "class": "none",
+        "support": 10,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      {
+        "class": "output_limit",
+        "support": 3,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      },
+      {
+        "class": "runtime_error",
+        "support": 25,
+        "precision": 1,
+        "recall": 0.96,
+        "f1": 0.98
+      },
+      {
+        "class": "syntax_error",
+        "support": 6,
+        "precision": 0.857,
+        "recall": 1,
+        "f1": 0.923
+      },
+      {
+        "class": "timeout",
+        "support": 5,
+        "precision": 1,
+        "recall": 1,
+        "f1": 1
+      }
+    ],
+    "typeAccuracy": 100,
+    "programRuntimeMs": {
+      "n": 10,
+      "avg": 47,
+      "p50": 20,
+      "p90": 167,
+      "max": 181
+    },
+    "wallTimeMs": {
+      "n": 58,
+      "avg": 782,
+      "p50": 359,
+      "p90": 2022,
+      "max": 2352
+    },
+    "wallTimeByLanguageMs": {
+      "python": 369,
+      "javascript": 386,
+      "c": 296,
+      "cpp": 807,
+      "java": 2040
+    },
+    "timeoutKillMs": {
+      "n": 5,
+      "avg": 13007,
+      "p50": 13007,
+      "p90": 13010,
+      "max": 13010
+    },
+    "throughput": {
+      "concurrency": 4,
+      "elapsedSec": 36,
+      "jobsPerMin": 104.9
+    },
+    "misses": [
+      {
+        "id": "js-json-parse",
+        "expected": {
+          "category": "runtime_error",
+          "type": "SyntaxError"
+        },
+        "got": {
+          "errorCategory": "syntax_error",
+          "errorType": "SyntaxError"
+        }
+      }
+    ]
+  },
+  "table": "| Evaluation parameter | Result | How it was measured |\n|---|---|---|\n| Benchmark programs | 63 (10 correct, 53 buggy, 5 languages) | labelled set in `server/eval/benchmark.js` |\n| Code execution correctness | 100% | correct programs that printed the expected output |\n| Sandbox completion rate | 100% | runs that returned a result (no crash/hang) |\n| Resource-limit containment | 100% (13/13) | infinite loops, memory bombs, output floods stopped within 15 s |\n| Error detection (error vs no error) | P 1 · R 1 · F1 1 | binary, over all programs |\n| Error category accuracy | 98.4% | 7 classes incl. none |\n| Error category macro P / R / F1 | 0.98 / 0.994 / 0.986 | averaged over classes |\n| Exact error-type accuracy | 100% | e.g. IndexError, SegmentationFault, over buggy programs |\n| Program execution time | avg 47 ms · p50 20 · p90 167 | inside the container, correct programs |\n| Sandbox turnaround per run | avg 782 ms · p50 359 · p90 2022 | incl. container start + compile, excl. timeouts |\n| Turnaround by language | python 369 ms · javascript 386 ms · c 296 ms · cpp 807 ms · java 2040 ms | avg wall time |\n| Infinite-loop kill time | avg 13.0 s | 10 s limit + 3 s start-up allowance |\n| Sandbox throughput | 104.9 runs/min at concurrency 4 | 63 runs in 36 s |"
+}

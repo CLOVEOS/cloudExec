@@ -117,7 +117,7 @@ function runDocker(language, code, input = "") {
         runtime: timedOut ? timeoutMs : runtime ?? wallTime,
         wallTime,
         timedOut,
-        oomKilled: !timedOut && code === 137,
+        oomKilled: !timedOut && !out.truncated && code === 137,
         outputTruncated: out.truncated,
       });
     });

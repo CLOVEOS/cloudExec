@@ -46,3 +46,6 @@ spark-warehouse/
 .pytest_cache/
 
 backups/
+
+# Evaluation runs (reference runs are committed under explicit names)
+server/eval/results/eval-*.json

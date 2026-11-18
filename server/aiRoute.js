@@ -30,6 +30,44 @@ function languageGuide(target) {
   ].join(" ");
 }
 
+/** The explain prompt; shared with the offline evaluator (scripts/evaluate.js). */
+function buildExplainPrompt({ code, error, language, target, historyText = "no previous errors recorded" }) {
+  const system =
+    "You are a patient programming mentor for Indian college students. " +
+    "Reply ONLY with a JSON object. " +
+    `All prose fields must follow this language guide: ${languageGuide(target)} ` +
+    "Keys stay in English. fixed_code must be the complete corrected program, not a diff (comments in it may stay English).";
+
+  const user = `Language: ${LANGUAGES[language].label}
+Learner's recurring ${LANGUAGES[language].label} errors so far: ${historyText}
+
+Program:
+\`\`\`
+${code.slice(0, 12000)}
+\`\`\`
+
+Compiler / runtime output:
+\`\`\`
+${String(error).slice(0, 4000)}
+\`\`\`
+
+Return JSON with exactly these keys:
+{
+  "title": "short name of the problem",
+  "explanation": "why it happened, 2-4 sentences",
+  "fix": "how to fix it, step by step",
+  "concept": "the underlying concept to learn",
+  "practice_tip": "one tip, referencing the learner's recurring errors if relevant",
+  "fixed_code": "full corrected program"
+}`;
+  return { system, user };
+}
+
+/** "```python\ncode\n```" → "code": the editor's "Apply fix" pastes fixed_code verbatim. */
+function stripCodeFence(code) {
+  return String(code ?? "").trim().replace(/^```[\w+-]*\n?/, "").replace(/\n?```$/, "");
+}
+
 async function userLanguage(userId, requested) {
   if (sarvam.UI_LANGUAGES[requested]) return requested;
   const user = await (await col("users")).findOne({ _id: new ObjectId(userId) }, { projection: { preferredLanguage: 1 } });
@@ -90,39 +128,17 @@ router.post("/explain", async (req, res) => {
     ? history.map((h) => `${h._id} ×${h.count}`).join(", ")
     : "no previous errors recorded";
 
-  const system =
-    "You are a patient programming mentor for Indian college students. " +
-    "Reply ONLY with a JSON object. " +
-    `All prose fields must follow this language guide: ${languageGuide(target)} ` +
-    "Keys stay in English. fixed_code must be the complete corrected program, not a diff (comments in it may stay English).";
-
-  const user = `Language: ${LANGUAGES[language].label}
-Learner's recurring ${LANGUAGES[language].label} errors so far: ${historyText}
-
-Program:
-\`\`\`
-${code.slice(0, 12000)}
-\`\`\`
-
-Compiler / runtime output:
-\`\`\`
-${String(error).slice(0, 4000)}
-\`\`\`
-
-Return JSON with exactly these keys:
-{
-  "title": "short name of the problem",
-  "explanation": "why it happened, 2-4 sentences",
-  "fix": "how to fix it, step by step",
-  "concept": "the underlying concept to learn",
-  "practice_tip": "one tip, referencing the learner's recurring errors if relevant",
-  "fixed_code": "full corrected program"
-}`;
+  const { system, user } = buildExplainPrompt({ code, error, language, target, historyText });
 
   try {
+    const started = Date.now();
     const { data, usage, model } = await sarvam.chatJson({ system, user });
+    if (data.fixed_code) data.fixed_code = stripCodeFence(data.fixed_code);
     metrics.aiRequests.inc({ feature: "explain", outcome: "ok" });
-    await logInteraction({ userId, feature: "explain", language, responseLanguage: target, jobId, model, usage, title: data.title });
+    await logInteraction({
+      userId, feature: "explain", language, responseLanguage: target, jobId, model, usage, title: data.title,
+      latencyMs: Date.now() - started,
+    });
     res.json({ ...data, responseLanguage: target });
   } catch (err) {
     aiError(res, "explain", err);
@@ -140,6 +156,7 @@ Return JSON with exactly these keys:
 const coachJobs = new Map(); // `${userId}:${lang}` -> { startedAt, error? }
 
 async function generateCoach(userId, target) {
+  const started = Date.now();
   const [dash, profile] = await Promise.all([
     getUserDashboard(userId, { days: 30 }),
     (await col("users")).findOne({ _id: new ObjectId(userId) }, { projection: { name: 1, goal: 1, college: 1 } }),
@@ -182,7 +199,10 @@ Return JSON:
 
   const { data, usage, model } = await sarvam.chatJson({ system, user, temperature: 0.4 });
   metrics.aiRequests.inc({ feature: "coach", outcome: "ok" });
-  await logInteraction({ userId, feature: "coach", responseLanguage: target, promptVersion: PROMPT_VERSION, model, usage, result: data });
+  await logInteraction({
+    userId, feature: "coach", responseLanguage: target, promptVersion: PROMPT_VERSION, model, usage, result: data,
+    latencyMs: Date.now() - started,
+  });
 }
 
 /**
@@ -253,3 +273,5 @@ router.post("/translate", async (req, res) => {
 });
 
 module.exports = router;
+module.exports.buildExplainPrompt = buildExplainPrompt;
+module.exports.stripCodeFence = stripCodeFence;

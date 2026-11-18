@@ -49,7 +49,12 @@ async function post(path, body, fetchImpl = globalThis.fetch) {
 /** Extract the first JSON object from a model reply (tolerates ```json fences / stray prose). */
 function parseJsonReply(content) {
   if (!content) throw new Error("Empty model reply");
-  const cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, "").replace(/```(?:json)?/g, "").trim();
+  // Unwrap only an outer ```json fence: fences inside string values (e.g. fixed_code) must survive.
+  const cleaned = content
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "");
   try {
     return JSON.parse(cleaned);
   } catch {

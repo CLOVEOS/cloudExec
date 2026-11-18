@@ -33,6 +33,13 @@ test("classifier: limits", () => {
   assert.equal(classify({ timedOut: true }).errorCategory, "timeout");
   assert.equal(classify({ exitCode: 137, stderr: "Killed" }).errorCategory, "memory_limit");
   assert.equal(classify({ outputTruncated: true, exitCode: 0 }).errorCategory, "output_limit");
+  // Output floods are killed by the executor (exit 137): still an output limit, not memory.
+  assert.equal(classify({ outputTruncated: true, exitCode: 137 }).errorCategory, "output_limit");
+});
+
+test("classifier: C undeclared identifier", () => {
+  const stderr = "main.c:3:31: error: 'count' undeclared (first use in this function)";
+  assert.deepEqual(classify({ stderr, exitCode: 1 }), { errorCategory: "compile_error", errorType: "UndeclaredIdentifier" });
 });
 
 test("streaks", () => {
@@ -58,6 +65,10 @@ test("sarvam: parseJsonReply tolerates fences and think blocks", () => {
   assert.deepEqual(sarvam.parseJsonReply('```json\n{"a":1}\n```'), { a: 1 });
   assert.deepEqual(sarvam.parseJsonReply('<think>hmm {no}</think>Sure! {"b":2} done'), { b: 2 });
   assert.throws(() => sarvam.parseJsonReply("no json here"));
+  // A fence inside a value is kept as-is, not half-stripped to "python\nprint(6)".
+  const inner = JSON.stringify({ fixed_code: "```python\nprint(6)\n```" });
+  assert.equal(sarvam.parseJsonReply(inner).fixed_code, "```python\nprint(6)\n```");
+  assert.equal(sarvam.parseJsonReply("```json\n" + inner + "\n```").fixed_code, "```python\nprint(6)\n```");
 });
 
 test("sarvam: chatJson sends correct request", async () => {
@@ -165,4 +176,11 @@ test("sarvam: reasoning is off by default (one call, reasoning_effort null)", as
   await sarvam.chatJson({ system: "s", user: "u" }, fakeFetch);
   assert.equal(bodies.length, 1);
   assert.equal(bodies[0].reasoning_effort, null);
+});
+
+test("ai: stripCodeFence unwraps a fenced fix only", () => {
+  const { stripCodeFence } = require("../aiRoute");
+  assert.equal(stripCodeFence("```python\nprint(6)\n```"), "print(6)");
+  assert.equal(stripCodeFence("```c++\nint main(){}\n```"), "int main(){}");
+  assert.equal(stripCodeFence("print('```')"), "print('```')");
 });
